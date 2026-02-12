@@ -129,16 +129,50 @@ app.get("/v1/validate", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/** Health check for Vercel / monitoring. */
+/** Root: welcome message and API documentation. */
 app.get("/", (_req: Request, res: Response): void => {
   res.json({
-    name: "VAT Validator API",
+    message: "Welcome to the VAT Validator API",
+    description:
+      "Validate EU VAT numbers via the official VIES system. Returns company name, address, and validation status in a clean JSON format.",
     version: "1.0.0",
-    endpoints: {
-      "GET /health": "API health status",
-      "GET /validate/:countryCode/:vatNumber": "Validate by path params",
-      "GET /v1/validate?vat_number=XX123": "Validate by query (full VAT id)",
+    documentation: {
+      base_url: "Use this API's base URL as the prefix for all endpoints below.",
+      authentication:
+        "Optional: set API_KEY in the server environment to require X-API-Key or Authorization: Bearer <key> for validation endpoints. / and /health remain public.",
+      rate_limits: "Applied per IP (configurable via RATE_LIMIT_MAX and RATE_LIMIT_WINDOW_MS). / and /health are not rate limited.",
     },
+    endpoints: [
+      {
+        method: "GET",
+        path: "/",
+        description: "This welcome and API documentation.",
+      },
+      {
+        method: "GET",
+        path: "/health",
+        description: "Health check. Returns status, timestamp, and uptime. For monitoring and load balancers.",
+      },
+      {
+        method: "GET",
+        path: "/validate/:countryCode/:vatNumber",
+        description: "Validate a VAT number using path parameters.",
+        example: "/validate/IE/6388047V",
+        parameters: {
+          countryCode: "Two-letter EU country code (e.g. IE, DE, FR).",
+          vatNumber: "VAT number without country prefix (spaces/dashes optional).",
+        },
+      },
+      {
+        method: "GET",
+        path: "/v1/validate",
+        description: "Validate a VAT number using query parameter (full identifier).",
+        example: "/v1/validate?vat_number=IE6388047V",
+        parameters: {
+          vat_number: "Full VAT id: two-letter country code + number (e.g. IE6388047V).",
+        },
+      },
+    ],
   });
 });
 
