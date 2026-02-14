@@ -1,3 +1,4 @@
+// VAT Validator API – Express app and routes
 import express, { Request, Response } from "express";
 import { config } from "./config";
 import { sendError } from "./errors";
