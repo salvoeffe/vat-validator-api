@@ -183,6 +183,9 @@ export async function checkVat(countryCode: string, vatNumber: string): Promise<
     const response = await axios.post<string>(VIES_URL, envelope, {
       headers: {
         "Content-Type": "text/xml; charset=utf-8",
+        "Accept": "text/xml, application/soap+xml",
+        "User-Agent":
+          "Mozilla/5.0 (compatible; VATValidator/1.0; +https://github.com/vat-validator-api)",
         SOAPAction: "",
       },
       responseType: "text",
@@ -204,6 +207,13 @@ export async function checkVat(countryCode: string, vatNumber: string): Promise<
       }
       if (ax.response?.status === 503) {
         throw toFriendlyError("SERVICE_UNAVAILABLE", 503);
+      }
+      if (ax.response?.status === 403) {
+        throw toFriendlyError(
+          "SERVICE_UNAVAILABLE",
+          502,
+          "The EU VIES service blocked the request (often when called from cloud/datacenter IPs). Try again later or run the API from a different network."
+        );
       }
       if (isNetworkErrorCode(ax.code)) {
         throw toFriendlyError("NETWORK_ERROR", 502, ax.message ?? ax.code);
