@@ -1,10 +1,13 @@
 import express, { Request, Response } from "express";
+import { config } from "./config";
 import { sendError } from "./errors";
 import type { ApiErrorCode } from "./errors";
 import { optionalApiKeyMiddleware } from "./middleware/apiKey";
 import { apiRateLimiter } from "./middleware/rateLimiter";
+import { checkVatViaVatlayer } from "./services/vatlayerService";
 import { checkVat, ViesServiceError } from "./services/viesService";
 import type { VatValidationApiResponse } from "./types";
+import type { ViesResponse } from "./types";
 import { validateFullVatInput, validatePathParams } from "./validation/vatValidation";
 
 export const app = express();
@@ -14,15 +17,7 @@ const startedAt = Date.now();
 app.use(optionalApiKeyMiddleware);
 app.use(apiRateLimiter);
 
-function toApiResponse(vies: {
-  valid: boolean;
-  countryCode: string;
-  vatNumber: string;
-  name: string;
-  address: string;
-  requestDate: string;
-  consultationNumber?: string | null;
-}): VatValidationApiResponse {
+function toApiResponse(vies: ViesResponse): VatValidationApiResponse {
   const checkedAt = new Date().toISOString();
   return {
     valid: vies.valid,
@@ -34,6 +29,27 @@ function toApiResponse(vies: {
     request_date: vies.requestDate || null,
     checked_at: checkedAt,
   };
+}
+
+/**
+ * Try VIES first; if VIES blocks the request (403 / SERVICE_UNAVAILABLE) and VATLAYER_API_KEY is set,
+ * fall back to Vatlayer so validation works from cloud IPs (e.g. Vercel).
+ * @see https://wpfactory.com/docs/order-min-max/troubleshooting/vies-ip-blocking/
+ */
+async function validateVat(countryCode: string, vatNumber: string): Promise<ViesResponse> {
+  try {
+    return await checkVat(countryCode, vatNumber);
+  } catch (err) {
+    const useVatlayer =
+      config.vatlayerApiKey &&
+      err instanceof ViesServiceError &&
+      err.code === "SERVICE_UNAVAILABLE" &&
+      err.statusCode === 502;
+    if (useVatlayer) {
+      return await checkVatViaVatlayer(config.vatlayerApiKey!, countryCode, vatNumber);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -67,7 +83,7 @@ app.get("/validate/:countryCode/:vatNumber", async (req: Request, res: Response)
   const { countryCode, vatNumber } = validation;
 
   try {
-    const result = await checkVat(countryCode, vatNumber);
+    const result = await validateVat(countryCode, vatNumber);
     res.json(toApiResponse(result));
   } catch (err) {
     if (err instanceof ViesServiceError) {
@@ -106,7 +122,7 @@ app.get("/v1/validate", async (req: Request, res: Response): Promise<void> => {
   const { countryCode, vatNumber } = validation;
 
   try {
-    const result = await checkVat(countryCode, vatNumber);
+    const result = await validateVat(countryCode, vatNumber);
     res.json(toApiResponse(result));
   } catch (err) {
     if (err instanceof ViesServiceError) {
@@ -134,13 +150,15 @@ app.get("/", (_req: Request, res: Response): void => {
   res.json({
     message: "Welcome to the VAT Validator API",
     description:
-      "Validate EU VAT numbers via the official VIES system. Returns company name, address, and validation status in a clean JSON format.",
+      "Validate EU VAT numbers via the official EU VIES system. When VIES blocks cloud IPs (e.g. on Vercel), falls back to Vatlayer if VATLAYER_API_KEY is set. Returns company name, address, and validation status in a clean JSON format.",
     version: "1.0.0",
     documentation: {
       base_url: "Use this API's base URL as the prefix for all endpoints below.",
       authentication:
         "Optional: set API_KEY in the server environment to require X-API-Key or Authorization: Bearer <key> for validation endpoints. / and /health remain public.",
       rate_limits: "Applied per IP (configurable via RATE_LIMIT_MAX and RATE_LIMIT_WINDOW_MS). / and /health are not rate limited.",
+      vatlayer_fallback:
+        "If VIES blocks your server (e.g. 403 on Vercel), set VATLAYER_API_KEY (apilayer.net) for automatic fallback. Free tier: 100 checks/month.",
     },
     endpoints: [
       {

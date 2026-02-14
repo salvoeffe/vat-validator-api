@@ -27,6 +27,13 @@ export const config = {
    */
   apiKey: process.env.API_KEY?.trim() || null,
 
+  /**
+   * Optional Vatlayer API key (apilayer.net). When set, validation falls back to Vatlayer
+   * when VIES blocks the request (e.g. 403 from cloud IPs on Vercel). Free tier: 100 checks/month.
+   * @see https://vatlayer.com/pricing
+   */
+  vatlayerApiKey: process.env.VATLAYER_API_KEY?.trim() || null,
+
   /** Node environment. */
   nodeEnv: process.env.NODE_ENV ?? "development",
 } as const;
