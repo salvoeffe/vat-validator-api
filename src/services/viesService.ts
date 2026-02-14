@@ -99,7 +99,6 @@ export type ViesErrorCode =
   | "UNKNOWN_ERROR";
 
 export class ViesServiceError extends Error {
-  /** Optional raw fault or upstream message for debugging (can be sent as details in API response). */
   public readonly details?: string;
 
   constructor(
@@ -136,9 +135,6 @@ const VIES_ERROR_MESSAGES: Record<ViesErrorCode, string> = {
     "An unexpected error occurred while validating the VAT number. Please try again.",
 };
 
-/**
- * Returns a user-friendly message for a VIES error code, and optionally preserves raw details.
- */
 function toFriendlyError(
   code: ViesErrorCode,
   statusCode: number,
@@ -148,9 +144,6 @@ function toFriendlyError(
   return new ViesServiceError(message, code, statusCode, rawFault);
 }
 
-/**
- * Maps VIES fault messages to a consistent error code and HTTP status.
- */
 function normalizeFault(faultString: string): { code: ViesErrorCode; statusCode: number } {
   const lower = faultString.toLowerCase();
   if (lower.includes("service unavailable") || lower.includes("server down")) {
@@ -171,6 +164,22 @@ function normalizeFault(faultString: string): { code: ViesErrorCode; statusCode:
   return { code: "UNKNOWN_ERROR", statusCode: 502 };
 }
 
+function isNetworkErrorCode(code: string | undefined): boolean {
+  if (!code) return false;
+  const networkCodes = [
+    "ECONNREFUSED",
+    "ECONNRESET",
+    "ENOTFOUND",
+    "ENETUNREACH",
+    "ETIMEDOUT",
+    "EAI_AGAIN",
+    "ERR_NETWORK",
+    "ERR_CONNECTION_REFUSED",
+    "ERR_CONNECTION_RESET",
+  ];
+  return networkCodes.includes(code);
+}
+
 /**
  * Calls the EU VIES SOAP service to validate a VAT number.
  * @throws {ViesServiceError} when VIES returns a fault or the response is invalid.
@@ -183,7 +192,7 @@ export async function checkVat(countryCode: string, vatNumber: string): Promise<
     const response = await axios.post<string>(VIES_URL, envelope, {
       headers: {
         "Content-Type": "text/xml; charset=utf-8",
-        "Accept": "text/xml, application/soap+xml",
+        Accept: "text/xml, application/soap+xml",
         "User-Agent":
           "Mozilla/5.0 (compatible; VATValidator/1.0; +https://github.com/vat-validator-api)",
         SOAPAction: "",
@@ -244,21 +253,4 @@ export async function checkVat(countryCode: string, vatNumber: string): Promise<
     const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
     throw toFriendlyError("PARSE_ERROR", 502, detail);
   }
-}
-
-/** Node/axios network error codes that warrant a NETWORK_ERROR response. */
-function isNetworkErrorCode(code: string | undefined): boolean {
-  if (!code) return false;
-  const networkCodes = [
-    "ECONNREFUSED",
-    "ECONNRESET",
-    "ENOTFOUND",
-    "ENETUNREACH",
-    "ETIMEDOUT",
-    "EAI_AGAIN",
-    "ERR_NETWORK",
-    "ERR_CONNECTION_REFUSED",
-    "ERR_CONNECTION_RESET",
-  ];
-  return networkCodes.includes(code);
 }
