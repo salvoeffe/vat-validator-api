@@ -62,6 +62,7 @@ app.get("/health", (_req: Request, res: Response): void => {
     timestamp: new Date().toISOString(),
     uptime_seconds: uptimeSeconds,
     service: "vat-validator-api",
+    vatlayer_configured: Boolean(config.vatlayerApiKey),
   });
 });
 
